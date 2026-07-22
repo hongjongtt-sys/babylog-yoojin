@@ -174,9 +174,15 @@
     </div>
 
     <div class="card" id="growthCard">
-      <h3>👶 성장 기록 (누적)</h3>
-      <div id="growthBody"></div>
+      <h3>👶 성장 누적 추이 (키·몸무게·머리둘레)</h3>
+      <canvas id="growthComboChart" height="220"></canvas>
+      <p style="font-size:11px;color:var(--sub);margin:8px 0 0;">최근 기록 지점에 표시된 숫자는 WHO 성장표준 기준 백분위 근사치입니다.</p>
     </div>
+  </section>
+
+  <!-- 성장 -->
+  <section class="page" id="page-growth">
+    <div class="card" id="growthTabBody"></div>
   </section>
 
   <!-- 캘린더 -->
@@ -238,6 +244,7 @@
     <button data-page="dashboard" class="on"><span class="tIcon">📊</span>대시보드</button>
     <button data-page="calendar"><span class="tIcon">📅</span>캘린더</button>
     <button data-page="record"><span class="tIcon">📝</span>기록</button>
+    <button data-page="growth"><span class="tIcon">👶</span>성장</button>
     <button data-page="med"><span class="tIcon">💊</span>투약</button>
     <button data-page="vax"><span class="tIcon">💉</span>접종</button>
   </nav>
@@ -586,10 +593,18 @@ function heightPercentile(cm, ageM){ const [M,S]=interpRow(HFA_MS, ageM); return
 function headPercentile(cm, ageM){ const [M,S]=interpRow(HCFA_MS, ageM); return lmsPercentile(cm,1,M,S); }
 
 let growthChartObjs = {w:null,h:null,c:null};
+let growthComboChartObj = null;
+
 function renderGrowth(){
-  const body = document.getElementById('growthBody');
+  renderGrowthTab();
+  renderDashboardGrowthChart();
+}
+
+function renderGrowthTab(){
+  const body = document.getElementById('growthTabBody');
   if(!childBirthDate){
-    body.innerHTML = `<p style="font-size:13px;color:var(--sub);margin:0 0 10px;">백분위수 계산을 위해 아이 생년월일을 먼저 등록해주세요.</p>
+    body.innerHTML = `<h3>아이 생년월일 등록</h3>
+      <p style="font-size:13px;color:var(--sub);margin:0 0 10px;">백분위수 계산을 위해 먼저 등록해주세요.</p>
       <div class="bdaySetup"><input type="date" id="bdayInput"><button id="bdaySaveBtn">저장</button></div>`;
     document.getElementById('bdaySaveBtn').onclick = async ()=>{
       const v = document.getElementById('bdayInput').value;
@@ -614,29 +629,12 @@ function renderGrowth(){
     <p style="font-size:11px;color:var(--sub);margin:0 0 10px;">WHO 성장표준 기준 근사치입니다. 정확한 판단은 소아과 검진을 따르세요.</p>`;
   }
   body.innerHTML = `
+    <h3 style="margin-bottom:10px;">👶 성장 기록</h3>
     <button class="growthAddBtn" id="growthAddBtnInner">+ 성장 기록 추가</button>
     ${pctHtml}
-    <canvas id="growthWeightChart" height="130"></canvas>
-    <canvas id="growthHeightChart" height="130" style="margin-top:14px;"></canvas>
-    <canvas id="growthHeadChart" height="130" style="margin-top:14px;"></canvas>
-    <div id="growthHistList" style="margin-top:12px;"></div>
+    <div id="growthHistList" style="margin-top:6px;"></div>
   `;
   document.getElementById('growthAddBtnInner').onclick = openGrowthAddSheet;
-
-  const labels = sorted.map(g=>{const d=parseDateStr(g.date);return `${d.getMonth()+1}/${d.getDate()}`;});
-  function mkChart(id, data, color, label){
-    if(growthChartObjs[id]) growthChartObjs[id].destroy();
-    growthChartObjs[id] = new Chart(document.getElementById(
-      id==='w'?'growthWeightChart':id==='h'?'growthHeightChart':'growthHeadChart'
-    ), {
-      type:'line',
-      data:{labels, datasets:[{label, data, borderColor:color, backgroundColor:color, tension:0.3, pointRadius:3}]},
-      options:{plugins:{legend:{display:true, labels:{boxWidth:10, font:{size:11}}}}, scales:{y:{beginAtZero:false}}}
-    });
-  }
-  mkChart('w', sorted.map(g=>g.weight?Number(g.weight):null), '#7fae8e', '체중(kg)');
-  mkChart('h', sorted.map(g=>g.height?Number(g.height):null), '#7fb3d5', '키(cm)');
-  mkChart('c', sorted.map(g=>g.head?Number(g.head):null), '#c98fa5', '머리둘레(cm)');
 
   const hist = document.getElementById('growthHistList');
   hist.innerHTML = sorted.slice().reverse().map(g=>
@@ -648,6 +646,72 @@ function renderGrowth(){
     el.onclick=()=>openGrowthEditSheet(el.dataset.id);
   });
 }
+
+/* 대시보드: 키/몸무게/머리둘레 콤보 누적차트, 최근 기록 지점에만 백분위 라벨 표시 */
+const lastPointLabelPlugin = {
+  id:'lastPointLabelPlugin',
+  afterDatasetsDraw(chart){
+    const {ctx} = chart;
+    chart.data.datasets.forEach((ds,i)=>{
+      if(!ds._lastLabel) return;
+      const meta = chart.getDatasetMeta(i);
+      // 마지막 non-null 포인트 찾기
+      let lastIdx=-1;
+      for(let k=ds.data.length-1;k>=0;k--){ if(ds.data[k]!==null && ds.data[k]!==undefined){ lastIdx=k; break; } }
+      if(lastIdx<0) return;
+      const point = meta.data[lastIdx];
+      if(!point) return;
+      ctx.save();
+      ctx.font='bold 11px -apple-system,sans-serif';
+      ctx.fillStyle = ds.borderColor;
+      ctx.textAlign='left';
+      ctx.fillText(ds._lastLabel, point.x+6, point.y-6);
+      ctx.restore();
+    });
+  }
+};
+function renderDashboardGrowthChart(){
+  const canvasEl = document.getElementById('growthComboChart');
+  if(!canvasEl) return;
+  const sorted = [...growthRecords].sort((a,b)=>a.date.localeCompare(b.date));
+  const labels = sorted.map(g=>{const d=parseDateStr(g.date);return `${d.getMonth()+1}/${d.getDate()}`;});
+
+  function buildDataset(field, color, label, pctFn, yAxisID){
+    const data = sorted.map(g=> g[field] ? Number(g[field]) : null);
+    let lastLabel = null;
+    if(childBirthDate){
+      for(let k=sorted.length-1;k>=0;k--){
+        if(sorted[k][field]){
+          const ageM = ageInMonths(childBirthDate, sorted[k].date);
+          const pct = pctFn(Number(sorted[k][field]), ageM);
+          lastLabel = `${pct}%ile`;
+          break;
+        }
+      }
+    }
+    return {label, data, borderColor:color, backgroundColor:color, tension:0.3, pointRadius:3, yAxisID, _lastLabel:lastLabel};
+  }
+  const datasets = [
+    buildDataset('weight','#7fae8e','체중(kg)',weightPercentile,'yWeight'),
+    buildDataset('height','#7fb3d5','키(cm)',heightPercentile,'yHeight'),
+    buildDataset('head','#c98fa5','머리둘레(cm)',headPercentile,'yHead'),
+  ];
+  if(growthComboChartObj) growthComboChartObj.destroy();
+  growthComboChartObj = new Chart(canvasEl, {
+    type:'line',
+    data:{labels, datasets},
+    plugins:[lastPointLabelPlugin],
+    options:{
+      plugins:{legend:{display:true, labels:{boxWidth:10, font:{size:11}}}},
+      scales:{
+        yWeight:{type:'linear', position:'left', title:{display:true,text:'kg',font:{size:10}}},
+        yHeight:{type:'linear', position:'right', title:{display:true,text:'cm(키)',font:{size:10}}, grid:{drawOnChartArea:false}},
+        yHead:{type:'linear', position:'right', display:false}
+      }
+    }
+  });
+}
+
 let growthEditId = null;
 function openGrowthAddSheet(){
   growthEditId = null;
