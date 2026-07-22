@@ -105,6 +105,23 @@
   /* medication */
   .medAddBtn{width:100%;padding:13px;border:none;border-radius:12px;background:var(--med);color:#fff;font-weight:700;font-size:14.5px;margin-bottom:14px;}
 
+  /* checkboxes */
+  .chkRow{display:flex;gap:18px;}
+  .chkRow label{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink);}
+  .chkRow input{width:18px;height:18px;}
+
+  /* growth */
+  .growthAddBtn{width:100%;padding:12px;border:none;border-radius:12px;background:#7fae8e;color:#fff;font-weight:700;font-size:14px;margin-bottom:12px;}
+  .pctRow{display:flex;gap:8px;margin-bottom:10px;}
+  .pctBox{flex:1;background:#f6f2ee;border-radius:12px;padding:10px 6px;text-align:center;}
+  .pctBox .pctNum{font-size:15px;font-weight:700;color:#7fae8e;}
+  .pctBox .pctLbl{font-size:11px;color:var(--sub);margin-top:2px;}
+  .growthHistItem{display:flex;justify-content:space-between;padding:8px 2px;border-bottom:1px solid var(--line);font-size:13px;}
+  .growthHistItem:last-child{border-bottom:none;}
+  .bdaySetup{display:flex;gap:8px;align-items:center;}
+  .bdaySetup input{flex:1;padding:10px;border:1px solid var(--line);border-radius:10px;}
+  .bdaySetup button{padding:10px 14px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-weight:600;}
+
   /* vaccination */
   .vGroup{margin-bottom:6px;}
   .vRow{display:flex;align-items:center;justify-content:space-between;padding:11px 4px;border-bottom:1px solid var(--line);}
@@ -155,6 +172,11 @@
       <h3>최근 7일 수면시간 (시간)</h3>
       <canvas id="sleepChart" height="160"></canvas>
     </div>
+
+    <div class="card" id="growthCard">
+      <h3>👶 성장 기록 (누적)</h3>
+      <div id="growthBody"></div>
+    </div>
   </section>
 
   <!-- 캘린더 -->
@@ -166,12 +188,6 @@
         <button id="calNext">›</button>
       </div>
       <div class="calGrid" id="calGrid"></div>
-    </div>
-    <div class="card">
-      <div class="dateNav" style="margin-bottom:6px;">
-        <div class="dLabel" id="calSelLabel">-</div>
-      </div>
-      <div id="calDayList"></div>
     </div>
   </section>
 
@@ -241,6 +257,12 @@
     </div>
   </div>
   <div class="field"><label>수유량 (ml)</label><input type="number" id="feedAmount" placeholder="예: 120"></div>
+  <div class="field">
+    <div class="chkRow">
+      <label><input type="checkbox" id="feedBurp"> 트림함</label>
+      <label><input type="checkbox" id="feedReflux"> 역류/토함</label>
+    </div>
+  </div>
   <div class="sheetBtns">
     <button class="btnDelete" id="feedDeleteBtn" style="display:none;">삭제</button>
     <button class="btnCancel" id="feedCancelBtn">취소</button>
@@ -290,6 +312,29 @@
     <button class="btnDelete" id="medDeleteBtn" style="display:none;">삭제</button>
     <button class="btnCancel" id="medCancelBtn">취소</button>
     <button class="btnSave" id="medSaveBtn">저장</button>
+  </div>
+</div>
+
+<!-- 캘린더 날짜 상세 팝업 -->
+<div class="sheet" id="sheetDayDetail">
+  <h3 id="dayDetailTitle">-</h3>
+  <div id="dayDetailList"></div>
+  <div class="sheetBtns" style="margin-top:14px;">
+    <button class="btnCancel" id="dayDetailCloseBtn" style="width:100%;">닫기</button>
+  </div>
+</div>
+
+<!-- 성장 기록 입력 시트 -->
+<div class="sheet" id="sheetGrowth">
+  <h3>👶 성장 기록</h3>
+  <div class="field"><label>측정일</label><input type="date" id="growthDate"></div>
+  <div class="field"><label>체중 (kg)</label><input type="number" step="0.01" id="growthWeight" placeholder="예: 4.2"></div>
+  <div class="field"><label>키 (cm)</label><input type="number" step="0.1" id="growthHeight" placeholder="예: 55.5"></div>
+  <div class="field"><label>머리둘레 (cm)</label><input type="number" step="0.1" id="growthHead" placeholder="예: 38.0"></div>
+  <div class="sheetBtns">
+    <button class="btnDelete" id="growthDeleteBtn" style="display:none;">삭제</button>
+    <button class="btnCancel" id="growthCancelBtn">취소</button>
+    <button class="btnSave" id="growthSaveBtn">저장</button>
   </div>
 </div>
 
@@ -361,6 +406,8 @@ document.getElementById('logoutBtn').onclick = ()=> auth.signOut();
 let allRecords = []; // 전체 records 캐시 (수유/배변/수면)
 let allMeds = [];
 let vaxRecords = {}; // vaccineId_doseIdx -> {date, hospital, note}
+let growthRecords = [];
+let childBirthDate = null; // 'YYYY-MM-DD'
 
 auth.onAuthStateChanged(user=>{
   if(user){
@@ -390,6 +437,16 @@ function startListeners(){
       snap.forEach(doc=>{ vaxRecords[doc.id.replace(CHILD_ID+'_','')] = {docId:doc.id, ...doc.data()}; });
       renderVax();
     });
+  db.collection('growth').where('childId','==',CHILD_ID).orderBy('date','asc')
+    .onSnapshot(snap=>{
+      growthRecords = [];
+      snap.forEach(doc=>{ growthRecords.push({id:doc.id, ...doc.data()}); });
+      renderGrowth();
+    });
+  db.collection('settings').doc(CHILD_ID).onSnapshot(doc=>{
+    childBirthDate = doc.exists ? doc.data().birthDate : null;
+    renderGrowth();
+  });
 }
 
 function renderAll(){
@@ -453,6 +510,181 @@ function minutesBetween(t1,t2){
   return mins;
 }
 
+/* ---------- 성장 기록 (WHO Child Growth Standards, GIRLS, 0-60개월) ---------- */
+// [L, M, S] per month index 0~60 (여아 체중)
+const WFA_LMS = [
+[0.3809,3.2322,0.14171],[0.1714,4.1873,0.13724],[0.0962,5.1282,0.13000],[0.0402,5.8458,0.12619],
+[-0.0050,6.4237,0.12402],[-0.0430,6.8985,0.12274],[-0.0756,7.2970,0.12204],[-0.1039,7.6422,0.12178],
+[-0.1288,7.9487,0.12181],[-0.1507,8.2254,0.12199],[-0.1700,8.4800,0.12223],[-0.1872,8.7192,0.12247],
+[-0.2024,8.9481,0.12268],[-0.2158,9.1699,0.12283],[-0.2278,9.3870,0.12294],[-0.2384,9.6008,0.12299],
+[-0.2478,9.8124,0.12303],[-0.2562,10.0226,0.12306],[-0.2637,10.2315,0.12309],[-0.2703,10.4393,0.12315],
+[-0.2762,10.6464,0.12323],[-0.2815,10.8534,0.12335],[-0.2862,11.0608,0.12350],[-0.2903,11.2688,0.12369],
+[-0.2941,11.4775,0.12390],[-0.2975,11.6864,0.12414],[-0.3005,11.8947,0.12441],[-0.3032,12.1015,0.12472],
+[-0.3057,12.3059,0.12506],[-0.3080,12.5073,0.12545],[-0.3101,12.7055,0.12587],[-0.3120,12.9006,0.12633],
+[-0.3138,13.0930,0.12683],[-0.3155,13.2837,0.12737],[-0.3171,13.4731,0.12794],[-0.3186,13.6618,0.12855],
+[-0.3201,13.8503,0.12919],[-0.3216,14.0385,0.12988],[-0.3230,14.2265,0.13059],[-0.3243,14.4140,0.13135],
+[-0.3257,14.6010,0.13213],[-0.3270,14.7873,0.13293],[-0.3283,14.9727,0.13376],[-0.3296,15.1573,0.13460],
+[-0.3309,15.3410,0.13545],[-0.3322,15.5240,0.13630],[-0.3335,15.7064,0.13716],[-0.3348,15.8882,0.13800],
+[-0.3361,16.0697,0.13884],[-0.3374,16.2511,0.13968],[-0.3387,16.4322,0.14051],[-0.3400,16.6133,0.14132],
+[-0.3414,16.7942,0.14213],[-0.3427,16.9748,0.14293],[-0.3440,17.1551,0.14371],[-0.3453,17.3347,0.14448],
+[-0.3466,17.5136,0.14525],[-0.3479,17.6916,0.14600],[-0.3492,17.8686,0.14675],[-0.3505,18.0445,0.14748],
+[-0.3518,18.2193,0.14821]
+];
+// [M, S] per month index 0~60, L=1 고정 (여아 키/신장)
+const HFA_MS = [
+[49.1477,0.03790],[53.6872,0.03640],[57.0673,0.03568],[59.8029,0.03520],[62.0899,0.03486],[64.0301,0.03463],
+[65.7311,0.03448],[67.2873,0.03441],[68.7498,0.03440],[70.1435,0.03444],[71.4818,0.03452],[72.7710,0.03464],
+[74.0150,0.03479],[75.2176,0.03496],[76.3817,0.03514],[77.5099,0.03534],[78.6055,0.03555],[79.6710,0.03576],
+[80.7079,0.03598],[81.7182,0.03620],[82.7036,0.03643],[83.6654,0.03666],[84.6040,0.03688],[85.5202,0.03711],
+[86.4153,0.03734],[86.5904,0.03786],[87.4462,0.03808],[88.2830,0.03830],[89.1004,0.03851],[89.8991,0.03872],
+[90.6797,0.03893],[91.4430,0.03913],[92.1906,0.03933],[92.9239,0.03952],[93.6444,0.03971],[94.3533,0.03989],
+[95.0515,0.04006],[95.7399,0.04024],[96.4187,0.04041],[97.0885,0.04057],[97.7493,0.04073],[98.4015,0.04089],
+[99.0448,0.04105],[99.6795,0.04120],[100.3058,0.04135],[100.9238,0.04150],[101.5337,0.04164],[102.1360,0.04179],
+[102.7312,0.04193],[103.3197,0.04206],[103.9021,0.04220],[104.4786,0.04233],[105.0494,0.04246],[105.6148,0.04259],
+[106.1748,0.04272],[106.7295,0.04285],[107.2788,0.04298],[107.8227,0.04310],[108.3613,0.04322],[108.8948,0.04334],
+[109.4233,0.04347]
+];
+// [M, S] per month index 0~60, L=1 고정 (여아 머리둘레)
+const HCFA_MS = [
+[33.8787,0.03496],[36.5463,0.03210],[38.2521,0.03168],[39.5328,0.03140],[40.5817,0.03119],[41.4590,0.03102],
+[42.1995,0.03087],[42.8290,0.03075],[43.3671,0.03063],[43.8300,0.03053],[44.2319,0.03044],[44.5844,0.03035],
+[44.8965,0.03027],[45.1752,0.03019],[45.4265,0.03012],[45.6551,0.03006],[45.8650,0.02999],[46.0598,0.02993],
+[46.2424,0.02987],[46.4152,0.02982],[46.5801,0.02977],[46.7384,0.02972],[46.8913,0.02967],[47.0391,0.02962],
+[47.1822,0.02957],[47.3204,0.02953],[47.4536,0.02949],[47.5817,0.02945],[47.7045,0.02941],[47.8219,0.02937],
+[47.9340,0.02933],[48.0410,0.02929],[48.1432,0.02926],[48.2408,0.02922],[48.3343,0.02919],[48.4239,0.02915],
+[48.5099,0.02912],[48.5926,0.02909],[48.6722,0.02906],[48.7489,0.02903],[48.8228,0.02900],[48.8941,0.02897],
+[48.9629,0.02894],[49.0294,0.02891],[49.0937,0.02888],[49.1560,0.02886],[49.2164,0.02883],[49.2751,0.02880],
+[49.3321,0.02878],[49.3877,0.02875],[49.4419,0.02873],[49.4947,0.02870],[49.5464,0.02868],[49.5969,0.02865],
+[49.6464,0.02863],[49.6947,0.02861],[49.7421,0.02859],[49.7885,0.02856],[49.8341,0.02854],[49.8789,0.02852],
+[49.9229,0.02850]
+];
+function ageInMonths(birthStr, dateStr){
+  const b = parseDateStr(birthStr), d = parseDateStr(dateStr);
+  const days = (d - b) / (1000*60*60*24);
+  return days / 30.4368499;
+}
+function interpRow(table, ageMonths){
+  const c = Math.max(0, Math.min(60, ageMonths));
+  const lo = Math.floor(c), hi = Math.min(60, Math.ceil(c));
+  const frac = c - lo;
+  if(lo===hi) return table[lo];
+  return table[lo].map((v,i)=> v + (table[hi][i]-v)*frac);
+}
+function normalCDF(z){
+  const t = 1/(1+0.2316419*Math.abs(z));
+  const d = 0.3989423*Math.exp(-z*z/2);
+  let p = d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));
+  if(z>0) p = 1-p;
+  return p;
+}
+function lmsPercentile(x, L, M, S){
+  let z = Math.abs(L) < 1e-9 ? Math.log(x/M)/S : (Math.pow(x/M, L)-1)/(L*S);
+  return Math.round(normalCDF(z)*100);
+}
+function weightPercentile(kg, ageM){ const [L,M,S]=interpRow(WFA_LMS, ageM); return lmsPercentile(kg,L,M,S); }
+function heightPercentile(cm, ageM){ const [M,S]=interpRow(HFA_MS, ageM); return lmsPercentile(cm,1,M,S); }
+function headPercentile(cm, ageM){ const [M,S]=interpRow(HCFA_MS, ageM); return lmsPercentile(cm,1,M,S); }
+
+let growthChartObjs = {w:null,h:null,c:null};
+function renderGrowth(){
+  const body = document.getElementById('growthBody');
+  if(!childBirthDate){
+    body.innerHTML = `<p style="font-size:13px;color:var(--sub);margin:0 0 10px;">백분위수 계산을 위해 아이 생년월일을 먼저 등록해주세요.</p>
+      <div class="bdaySetup"><input type="date" id="bdayInput"><button id="bdaySaveBtn">저장</button></div>`;
+    document.getElementById('bdaySaveBtn').onclick = async ()=>{
+      const v = document.getElementById('bdayInput').value;
+      if(!v) return;
+      await db.collection('settings').doc(CHILD_ID).set({birthDate:v}, {merge:true});
+    };
+    return;
+  }
+  const sorted = [...growthRecords].sort((a,b)=>a.date.localeCompare(b.date));
+  const latest = sorted[sorted.length-1];
+  let pctHtml = '';
+  if(latest){
+    const ageM = ageInMonths(childBirthDate, latest.date);
+    const wp = latest.weight ? weightPercentile(Number(latest.weight), ageM) : null;
+    const hp = latest.height ? heightPercentile(Number(latest.height), ageM) : null;
+    const cp = latest.head ? headPercentile(Number(latest.head), ageM) : null;
+    pctHtml = `<div class="pctRow">
+      <div class="pctBox"><div class="pctNum">${wp!==null?wp+'%ile':'-'}</div><div class="pctLbl">체중 (${latest.weight||'-'}kg)</div></div>
+      <div class="pctBox"><div class="pctNum">${hp!==null?hp+'%ile':'-'}</div><div class="pctLbl">키 (${latest.height||'-'}cm)</div></div>
+      <div class="pctBox"><div class="pctNum">${cp!==null?cp+'%ile':'-'}</div><div class="pctLbl">머리둘레 (${latest.head||'-'}cm)</div></div>
+    </div>
+    <p style="font-size:11px;color:var(--sub);margin:0 0 10px;">WHO 성장표준 기준 근사치입니다. 정확한 판단은 소아과 검진을 따르세요.</p>`;
+  }
+  body.innerHTML = `
+    <button class="growthAddBtn" id="growthAddBtnInner">+ 성장 기록 추가</button>
+    ${pctHtml}
+    <canvas id="growthWeightChart" height="130"></canvas>
+    <canvas id="growthHeightChart" height="130" style="margin-top:14px;"></canvas>
+    <canvas id="growthHeadChart" height="130" style="margin-top:14px;"></canvas>
+    <div id="growthHistList" style="margin-top:12px;"></div>
+  `;
+  document.getElementById('growthAddBtnInner').onclick = openGrowthAddSheet;
+
+  const labels = sorted.map(g=>{const d=parseDateStr(g.date);return `${d.getMonth()+1}/${d.getDate()}`;});
+  function mkChart(id, data, color, label){
+    if(growthChartObjs[id]) growthChartObjs[id].destroy();
+    growthChartObjs[id] = new Chart(document.getElementById(
+      id==='w'?'growthWeightChart':id==='h'?'growthHeightChart':'growthHeadChart'
+    ), {
+      type:'line',
+      data:{labels, datasets:[{label, data, borderColor:color, backgroundColor:color, tension:0.3, pointRadius:3}]},
+      options:{plugins:{legend:{display:true, labels:{boxWidth:10, font:{size:11}}}}, scales:{y:{beginAtZero:false}}}
+    });
+  }
+  mkChart('w', sorted.map(g=>g.weight?Number(g.weight):null), '#7fae8e', '체중(kg)');
+  mkChart('h', sorted.map(g=>g.height?Number(g.height):null), '#7fb3d5', '키(cm)');
+  mkChart('c', sorted.map(g=>g.head?Number(g.head):null), '#c98fa5', '머리둘레(cm)');
+
+  const hist = document.getElementById('growthHistList');
+  hist.innerHTML = sorted.slice().reverse().map(g=>
+    `<div class="growthHistItem" data-id="${g.id}" style="cursor:pointer;">
+      <span>${g.date}</span>
+      <span>${g.weight?g.weight+'kg ':''}${g.height?g.height+'cm ':''}${g.head?g.head+'cm':''}</span>
+    </div>`).join('') || '<div class="emptyMsg">아직 기록이 없어요.</div>';
+  hist.querySelectorAll('.growthHistItem').forEach(el=>{
+    el.onclick=()=>openGrowthEditSheet(el.dataset.id);
+  });
+}
+let growthEditId = null;
+function openGrowthAddSheet(){
+  growthEditId = null;
+  document.getElementById('growthDate').value = toDateStr(new Date());
+  document.getElementById('growthWeight').value='';
+  document.getElementById('growthHeight').value='';
+  document.getElementById('growthHead').value='';
+  document.getElementById('growthDeleteBtn').style.display='none';
+  showSheet('sheetGrowth');
+}
+function openGrowthEditSheet(id){
+  growthEditId = id;
+  const g = growthRecords.find(x=>x.id===id);
+  if(!g) return;
+  document.getElementById('growthDate').value = g.date;
+  document.getElementById('growthWeight').value = g.weight||'';
+  document.getElementById('growthHeight').value = g.height||'';
+  document.getElementById('growthHead').value = g.head||'';
+  document.getElementById('growthDeleteBtn').style.display='block';
+  showSheet('sheetGrowth');
+}
+document.getElementById('growthCancelBtn').onclick = hideAllSheets;
+document.getElementById('growthSaveBtn').onclick = async ()=>{
+  const date = document.getElementById('growthDate').value;
+  const weight = document.getElementById('growthWeight').value;
+  const height = document.getElementById('growthHeight').value;
+  const head = document.getElementById('growthHead').value;
+  const data = {childId:CHILD_ID, date, weight:weight||null, height:height||null, head:head||null};
+  if(growthEditId) await db.collection('growth').doc(growthEditId).update(data);
+  else await db.collection('growth').add(data);
+  hideAllSheets();
+};
+document.getElementById('growthDeleteBtn').onclick = async ()=>{
+  if(growthEditId){ await db.collection('growth').doc(growthEditId).delete(); }
+  hideAllSheets();
+};
+
 /* ---------- 통합 기록 탭 ---------- */
 let recDate = new Date();
 function renderRecordTab(){
@@ -472,7 +704,13 @@ function getSortTime(r){
 }
 function renderTlItem(r){
   let main='', sub='';
-  if(r.type==='feed'){ main = `🍼 수유 ${r.amount?r.amount+'ml':''}`; sub = r.method||''; }
+  if(r.type==='feed'){
+    main = `🍼 수유 ${r.amount?r.amount+'ml':''}`;
+    const tags=[r.method].filter(Boolean);
+    if(r.burp) tags.push('트림함');
+    if(r.reflux) tags.push('역류');
+    sub = tags.join(' · ');
+  }
   else if(r.type==='diaper'){ main = `💩 배변 (${r.kind})`; sub = r.note||''; }
   else if(r.type==='sleep'){ main = `😴 수면 ${r.startTime}${r.endTime?' ~ '+r.endTime:' (진행중)'}`; sub = r.endTime?minutesBetween(r.startTime,r.endTime)+'분':''; }
   const timeLabel = r.type==='sleep' ? r.startTime : r.time;
@@ -506,6 +744,8 @@ function openAddSheet(type){
     document.getElementById('feedTime').value = toTimeStr(now);
     document.getElementById('feedAmount').value = lastFeedAmount;
     setSeg('feedMethodSeg','모유');
+    document.getElementById('feedBurp').checked = false;
+    document.getElementById('feedReflux').checked = false;
     document.getElementById('feedDeleteBtn').style.display='none';
     showSheet('sheetFeed');
   }else if(type==='diaper'){
@@ -530,6 +770,8 @@ function openEditSheet(id, type){
     document.getElementById('feedTime').value = r.time;
     document.getElementById('feedAmount').value = r.amount;
     setSeg('feedMethodSeg', r.method);
+    document.getElementById('feedBurp').checked = !!r.burp;
+    document.getElementById('feedReflux').checked = !!r.reflux;
     document.getElementById('feedDeleteBtn').style.display='block';
     showSheet('sheetFeed');
   }else if(type==='diaper'){
@@ -588,8 +830,10 @@ document.getElementById('feedSaveBtn').onclick = async ()=>{
   const time = document.getElementById('feedTime').value;
   const amount = Number(document.getElementById('feedAmount').value)||0;
   const method = getSegVal('feedMethodSeg');
+  const burp = document.getElementById('feedBurp').checked;
+  const reflux = document.getElementById('feedReflux').checked;
   lastFeedAmount = amount;
-  const data = {childId:CHILD_ID, type:'feed', date:sheetContextDate, time, amount, method, dateTime:sheetContextDate+'T'+time};
+  const data = {childId:CHILD_ID, type:'feed', date:sheetContextDate, time, amount, method, burp, reflux, dateTime:sheetContextDate+'T'+time};
   if(editingId) await db.collection('records').doc(editingId).update(data);
   else await db.collection('records').add(data);
   hideAllSheets();
@@ -700,25 +944,28 @@ function renderCalendar(){
   }
   grid.innerHTML = html;
   grid.querySelectorAll('.calCell[data-date]').forEach(el=>{
-    el.onclick=()=>{ calSelDate = parseDateStr(el.dataset.date); renderCalendar(); renderCalDayList(); };
+    el.onclick=()=>{ calSelDate = parseDateStr(el.dataset.date); renderCalendar(); openDayDetail(calSelDate); };
   });
-  renderCalDayList();
 }
-function renderCalDayList(){
-  document.getElementById('calSelLabel').textContent = fmtDateLabel(calSelDate);
-  const ds = toDateStr(calSelDate);
+function openDayDetail(dateObj){
+  document.getElementById('dayDetailTitle').textContent = fmtDateLabel(dateObj) + ' 기록';
+  const ds = toDateStr(dateObj);
   const items = [...allRecords.filter(r=>r.date===ds), ...allMeds.filter(r=>r.date===ds)]
     .sort((a,b)=>getSortTime(a).localeCompare(getSortTime(b)));
-  const wrap = document.getElementById('calDayList');
-  if(items.length===0){ wrap.innerHTML='<div class="emptyMsg">이 날 기록이 없어요.</div>'; return; }
-  wrap.innerHTML = items.map(r=> r.type==='med'
-    ? `<div class="tlItem" data-id="${r.id}" data-type="med"><div class="tlDot med"></div><div class="tlBody"><div class="tlTime">${r.time}</div><div class="tlMain">💊 ${r.name} ${r.dose?'('+r.dose+')':''}</div>${r.note?`<div class="tlSub">${r.note}</div>`:''}</div></div>`
-    : renderTlItem(r)
-  ).join('');
-  wrap.querySelectorAll('.tlItem').forEach(el=>{
-    el.onclick=()=>openEditSheet(el.dataset.id, el.dataset.type);
-  });
+  const wrap = document.getElementById('dayDetailList');
+  if(items.length===0){ wrap.innerHTML='<div class="emptyMsg">이 날 기록이 없어요.</div>'; }
+  else{
+    wrap.innerHTML = items.map(r=> r.type==='med'
+      ? `<div class="tlItem" data-id="${r.id}" data-type="med"><div class="tlDot med"></div><div class="tlBody"><div class="tlTime">${r.time}</div><div class="tlMain">💊 ${r.name} ${r.dose?'('+r.dose+')':''}</div>${r.note?`<div class="tlSub">${r.note}</div>`:''}</div></div>`
+      : renderTlItem(r)
+    ).join('');
+    wrap.querySelectorAll('.tlItem').forEach(el=>{
+      el.onclick=()=>{ hideAllSheets(); setTimeout(()=>openEditSheet(el.dataset.id, el.dataset.type), 150); };
+    });
+  }
+  showSheet('sheetDayDetail');
 }
+document.getElementById('dayDetailCloseBtn').onclick = hideAllSheets;
 document.getElementById('calPrev').onclick=()=>{calMonth.setMonth(calMonth.getMonth()-1); renderCalendar();};
 document.getElementById('calNext').onclick=()=>{calMonth.setMonth(calMonth.getMonth()+1); renderCalendar();};
 
