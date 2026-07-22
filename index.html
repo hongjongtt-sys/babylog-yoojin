@@ -12,7 +12,7 @@
   :root{
     --bg:#faf7f5; --card:#ffffff; --ink:#3a3230; --sub:#8a7f7b;
     --line:#eee3df; --accent:#e8998d; --accent-soft:#fbe4df;
-    --feed:#7fb3d5; --diaper:#c9a96e; --sleep:#a58fc9; --med:#e0776b;
+    --feed:#7fb3d5; --diaper:#c9a96e; --sleep:#a58fc9; --med:#e0776b; --diary:#b58ec9;
     --danger:#e0776b; --radius:16px;
   }
   *{box-sizing:border-box;}
@@ -64,7 +64,7 @@
   .tlItem{display:flex;gap:10px;align-items:flex-start;padding:10px 4px;border-bottom:1px solid var(--line);}
   .tlItem:last-child{border-bottom:none;}
   .tlDot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex-shrink:0;}
-  .tlDot.feed{background:var(--feed);} .tlDot.diaper{background:var(--diaper);} .tlDot.sleep{background:var(--sleep);} .tlDot.med{background:var(--med);}
+  .tlDot.feed{background:var(--feed);} .tlDot.diaper{background:var(--diaper);} .tlDot.sleep{background:var(--sleep);} .tlDot.med{background:var(--med);} .tlDot.diary{background:var(--diary);}
   .tlBody{flex:1;}
   .tlTime{font-size:12px;color:var(--sub);}
   .tlMain{font-size:14.5px;font-weight:600;margin-top:1px;}
@@ -243,6 +243,27 @@
     </div>
   </section>
 
+  <!-- 자율일기 -->
+  <section class="page" id="page-diary">
+    <div class="dateNav">
+      <button id="diaryPrev">‹</button>
+      <div style="text-align:center;">
+        <div class="dLabel" id="diaryDateLabel">오늘</div>
+        <button class="today-jump" id="diaryTodayJump">오늘로</button>
+      </div>
+      <button id="diaryNext">›</button>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:8px;">📔 오늘의 기록</h3>
+      <textarea id="diaryTextarea" placeholder="오늘 있었던 일, 아이의 변화, 느낀 점 등을 자유롭게 적어보세요." style="width:100%;min-height:140px;padding:12px;border:1px solid var(--line);border-radius:12px;font-size:14.5px;font-family:inherit;resize:vertical;background:#fdfbfa;"></textarea>
+      <button class="growthAddBtn" id="diarySaveBtn" style="margin-top:10px;">저장</button>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:4px;">지난 일기</h3>
+      <div id="diaryHistList"></div>
+    </div>
+  </section>
+
   <!-- 접종 -->
   <section class="page" id="page-vax">
     <button class="medAddBtn" style="background:#7fae8e;" id="vaxAddCustomBtn">+ 백신 추가</button>
@@ -255,6 +276,7 @@
     <button data-page="record"><span class="tIcon">📝</span>기록</button>
     <button data-page="growth"><span class="tIcon">👶</span>성장</button>
     <button data-page="med"><span class="tIcon">💊</span>투약</button>
+    <button data-page="diary"><span class="tIcon">📔</span>일기</button>
     <button data-page="vax"><span class="tIcon">💉</span>접종</button>
   </nav>
 </div>
@@ -457,6 +479,7 @@ let growthRecords = [];
 let childBirthDate = null; // 'YYYY-MM-DD'
 let customVaxList = []; // 사용자가 추가한 백신
 let hiddenVaxKeys = new Set(); // 기본 백신 중 숨긴 것
+let allDiary = []; // 일기 캐시
 
 auth.onAuthStateChanged(user=>{
   if(user){
@@ -508,6 +531,13 @@ function startListeners(){
     childBirthDate = doc.exists ? doc.data().birthDate : null;
     renderGrowth();
   });
+  db.collection('diary').where('childId','==',CHILD_ID).orderBy('date','asc')
+    .onSnapshot(snap=>{
+      allDiary = [];
+      snap.forEach(doc=>{ allDiary.push({id:doc.id, ...doc.data()}); });
+      renderDiaryTab();
+      renderCalendar();
+    });
 }
 
 function renderAll(){
@@ -1083,6 +1113,81 @@ document.getElementById('medDeleteBtn').onclick = async ()=>{
   hideAllSheets();
 };
 
+/* ---------- 자율일기 탭 ---------- */
+let diaryDate = new Date();
+let diaryOpenMonths = null; // Set
+function renderDiaryTab(){
+  document.getElementById('diaryDateLabel').textContent = fmtDateLabel(diaryDate);
+  const ds = toDateStr(diaryDate);
+  const entry = allDiary.find(d=>d.date===ds);
+  document.getElementById('diaryTextarea').value = entry ? entry.text : '';
+
+  const hist = document.getElementById('diaryHistList');
+  const others = allDiary.filter(d=>d.date!==ds).slice().sort((a,b)=>b.date.localeCompare(a.date));
+  if(others.length===0){
+    hist.innerHTML = '<div class="emptyMsg">아직 다른 날짜의 일기가 없어요.</div>';
+    return;
+  }
+  const byMonth = {};
+  others.forEach(d=>{
+    const ym = d.date.slice(0,7);
+    if(!byMonth[ym]) byMonth[ym]=[];
+    byMonth[ym].push(d);
+  });
+  const months = Object.keys(byMonth).sort().reverse();
+  if(diaryOpenMonths===null){ diaryOpenMonths = new Set([months[0]]); }
+  hist.innerHTML = months.map(ym=>{
+    const [yy,mm] = ym.split('-');
+    const isOpen = diaryOpenMonths.has(ym);
+    const rows = byMonth[ym].map(d=>{
+      const preview = d.text.length>40 ? d.text.slice(0,40)+'…' : d.text;
+      return `<div class="growthHistItem" data-date="${d.date}" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:2px;">
+        <span style="font-weight:600;">${d.date}</span>
+        <span style="color:var(--sub);font-size:12.5px;">${preview||'(내용 없음)'}</span>
+      </div>`;
+    }).join('');
+    return `<div class="vGroup">
+      <div class="vGroupHeader diaryMonthHeader" data-ym="${ym}">
+        <span class="vAgeTitle">${yy}년 ${Number(mm)}월</span>
+        <span class="vCountBadge">${byMonth[ym].length}건</span>
+        <span class="vChevron">${isOpen?'▾':'▸'}</span>
+      </div>
+      <div class="vGroupBody" style="display:${isOpen?'block':'none'};padding-bottom:4px;">${rows}</div>
+    </div>`;
+  }).join('');
+  hist.querySelectorAll('.diaryMonthHeader').forEach(el=>{
+    el.onclick=()=>{
+      const ym = el.dataset.ym;
+      if(diaryOpenMonths.has(ym)) diaryOpenMonths.delete(ym); else diaryOpenMonths.add(ym);
+      renderDiaryTab();
+    };
+  });
+  hist.querySelectorAll('.growthHistItem').forEach(el=>{
+    el.onclick=()=>{ diaryDate = parseDateStr(el.dataset.date); renderDiaryTab(); };
+  });
+}
+document.getElementById('diaryPrev').onclick=()=>{diaryDate.setDate(diaryDate.getDate()-1); renderDiaryTab();};
+document.getElementById('diaryNext').onclick=()=>{diaryDate.setDate(diaryDate.getDate()+1); renderDiaryTab();};
+document.getElementById('diaryTodayJump').onclick=()=>{diaryDate=new Date(); renderDiaryTab();};
+document.getElementById('diarySaveBtn').onclick = async ()=>{
+  const ds = toDateStr(diaryDate);
+  const text = document.getElementById('diaryTextarea').value;
+  const docId = CHILD_ID+'_'+ds;
+  if(text.trim()===''){
+    await db.collection('diary').doc(docId).delete().catch(()=>{});
+  } else {
+    await db.collection('diary').doc(docId).set({childId:CHILD_ID, date:ds, text});
+  }
+};
+function jumpToDiaryDate(dateStr){
+  diaryDate = parseDateStr(dateStr);
+  document.querySelectorAll('nav.tabbar button').forEach(b=>b.classList.remove('on'));
+  document.querySelector('nav.tabbar button[data-page="diary"]').classList.add('on');
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-diary').classList.add('active');
+  renderDiaryTab();
+}
+
 /* ---------- 캘린더 탭 ---------- */
 let calMonth = new Date(); calMonth.setDate(1);
 let calSelDate = new Date();
@@ -1100,8 +1205,10 @@ function renderCalendar(){
     const ds = toDateStr(d);
     const dayRecs = allRecords.filter(r=>r.date===ds);
     const dayMeds = allMeds.filter(r=>r.date===ds);
+    const dayDiary = allDiary.filter(r=>r.date===ds && r.text && r.text.trim()!=='');
     const types = new Set(dayRecs.map(r=>r.type));
     if(dayMeds.length) types.add('med');
+    if(dayDiary.length) types.add('diary');
     const dots = [...types].map(t=>`<span style="background:var(--${t})"></span>`).join('');
     const cls = ['calCell'];
     if(ds===todayStr) cls.push('today');
@@ -1116,18 +1223,28 @@ function renderCalendar(){
 function openDayDetail(dateObj){
   document.getElementById('dayDetailTitle').textContent = fmtDateLabel(dateObj) + ' 기록';
   const ds = toDateStr(dateObj);
+  const diaryEntry = allDiary.find(r=>r.date===ds && r.text && r.text.trim()!=='');
   const items = [...allRecords.filter(r=>r.date===ds), ...allMeds.filter(r=>r.date===ds)]
     .sort((a,b)=>getSortTime(a).localeCompare(getSortTime(b)));
   const wrap = document.getElementById('dayDetailList');
-  if(items.length===0){ wrap.innerHTML='<div class="emptyMsg">이 날 기록이 없어요.</div>'; }
-  else{
-    wrap.innerHTML = items.map(r=> r.type==='med'
+  let html = '';
+  if(diaryEntry){
+    const preview = diaryEntry.text.length>50 ? diaryEntry.text.slice(0,50)+'…' : diaryEntry.text;
+    html += `<div class="tlItem" data-diary="1"><div class="tlDot diary"></div><div class="tlBody"><div class="tlTime">📔 일기</div><div class="tlMain">${preview}</div></div></div>`;
+  }
+  if(items.length===0 && !diaryEntry){
+    wrap.innerHTML='<div class="emptyMsg">이 날 기록이 없어요.</div>';
+  } else {
+    html += items.map(r=> r.type==='med'
       ? `<div class="tlItem" data-id="${r.id}" data-type="med"><div class="tlDot med"></div><div class="tlBody"><div class="tlTime">${r.time}</div><div class="tlMain">💊 ${r.name} ${r.dose?'('+r.dose+')':''}</div>${r.note?`<div class="tlSub">${r.note}</div>`:''}</div></div>`
       : renderTlItem(r)
     ).join('');
-    wrap.querySelectorAll('.tlItem').forEach(el=>{
+    wrap.innerHTML = html;
+    wrap.querySelectorAll('.tlItem[data-id]').forEach(el=>{
       el.onclick=()=>{ hideAllSheets(); setTimeout(()=>openEditSheet(el.dataset.id, el.dataset.type), 150); };
     });
+    const diaryEl = wrap.querySelector('.tlItem[data-diary]');
+    if(diaryEl) diaryEl.onclick=()=>{ hideAllSheets(); setTimeout(()=>jumpToDiaryDate(ds), 150); };
   }
   showSheet('sheetDayDetail');
 }
