@@ -410,6 +410,12 @@ document.getElementById('signupBtn').onclick = ()=>{
 };
 document.getElementById('logoutBtn').onclick = ()=> auth.signOut();
 
+['loginEmail','loginPw'].forEach(id=>{
+  document.getElementById(id).addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ document.getElementById('loginBtn').click(); }
+  });
+});
+
 let allRecords = []; // 전체 records 캐시 (수유/배변/수면)
 let allMeds = [];
 let vaxRecords = {}; // vaccineId_doseIdx -> {date, hospital, note}
@@ -630,11 +636,26 @@ function renderGrowthTab(){
   }
   body.innerHTML = `
     <h3 style="margin-bottom:10px;">👶 성장 기록</h3>
+    <div style="display:flex;align-items:center;justify-content:space-between;background:#f6f2ee;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px;">
+      <span>아이 생년월일: <b>${childBirthDate}</b></span>
+      <button id="bdayEditBtn" style="background:none;border:none;color:var(--accent);text-decoration:underline;font-size:12.5px;">수정</button>
+    </div>
+    <div id="bdayEditRow" style="display:none;margin-bottom:12px;">
+      <div class="bdaySetup"><input type="date" id="bdayInput2" value="${childBirthDate}"><button id="bdaySaveBtn2">저장</button></div>
+    </div>
     <button class="growthAddBtn" id="growthAddBtnInner">+ 성장 기록 추가</button>
     ${pctHtml}
     <div id="growthHistList" style="margin-top:6px;"></div>
   `;
   document.getElementById('growthAddBtnInner').onclick = openGrowthAddSheet;
+  document.getElementById('bdayEditBtn').onclick = ()=>{
+    document.getElementById('bdayEditRow').style.display='block';
+  };
+  document.getElementById('bdaySaveBtn2').onclick = async ()=>{
+    const v = document.getElementById('bdayInput2').value;
+    if(!v) return;
+    await db.collection('settings').doc(CHILD_ID).set({birthDate:v}, {merge:true});
+  };
 
   const hist = document.getElementById('growthHistList');
   hist.innerHTML = sorted.slice().reverse().map(g=>
