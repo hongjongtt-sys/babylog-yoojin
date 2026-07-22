@@ -1068,20 +1068,32 @@ const VAX_DEFS = [
   {id:'hepa', name:'A형간염', doses:[{label:'1차', age:'12~23개월'},{label:'2차', age:'1차 후 6~12개월'}]},
   {id:'je', name:'일본뇌염', doses:[{label:'1차', age:'12~23개월'},{label:'2차', age:'1차 후 7~30일'},{label:'3차', age:'만 2세'}]},
 ];
+// 개월수(연령) 순서 정의 - 표준예방접종일정 기준
+const AGE_ORDER = ['출생 직후','생후 4주 이내','생후 1개월','생후 2개월','생후 4개월','생후 6개월','6~18개월','12~15개월','12~23개월','1차 후 6~12개월','1차 후 7~30일','15~18개월','만 2세','4~6세'];
+const FLAT_VAX = [];
+VAX_DEFS.forEach(v=>{
+  v.doses.forEach((dose,i)=>{
+    FLAT_VAX.push({vid:v.id, vname:v.name, doseIndex:i, doseLabel:dose.label, age:dose.age});
+  });
+});
 function renderVax(){
   const wrap = document.getElementById('vaxList');
-  wrap.innerHTML = VAX_DEFS.map(v=>{
-    const rows = v.doses.map((dose,i)=>{
-      const key = `${v.id}_${i}`;
+  let html = '';
+  AGE_ORDER.forEach(age=>{
+    const items = FLAT_VAX.filter(f=>f.age===age);
+    if(items.length===0) return;
+    const rows = items.map(f=>{
+      const key = `${f.vid}_${f.doseIndex}`;
       const rec = vaxRecords[key];
       const status = rec ? `<span class="vStatus done">완료 ${rec.date}</span>` : `<span class="vStatus pending">예정</span>`;
-      return `<div class="vRow" data-key="${key}" data-vname="${v.name}" data-dlabel="${dose.label}">
-        <div><div class="vName">${v.name} ${dose.label}</div><div class="vAge">${dose.age}</div></div>
+      return `<div class="vRow" data-key="${key}" data-vname="${f.vname}" data-dlabel="${f.doseLabel}">
+        <div><div class="vName">${f.vname} ${f.doseLabel}</div></div>
         ${status}
       </div>`;
     }).join('');
-    return `<div class="vGroup">${rows}</div>`;
-  }).join('');
+    html += `<div class="vGroup"><div class="vAge" style="font-weight:700;font-size:13px;color:var(--ink);margin:10px 0 2px;">${age}</div>${rows}</div>`;
+  });
+  wrap.innerHTML = html;
   wrap.querySelectorAll('.vRow').forEach(el=>{
     el.onclick=()=>openVaxSheet(el.dataset.key, el.dataset.vname, el.dataset.dlabel);
   });
