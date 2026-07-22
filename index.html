@@ -123,13 +123,19 @@
   .bdaySetup button{padding:10px 14px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-weight:600;}
 
   /* vaccination */
-  .vGroup{margin-bottom:6px;}
-  .vRow{display:flex;align-items:center;justify-content:space-between;padding:11px 4px;border-bottom:1px solid var(--line);}
+  .vGroup{margin-bottom:10px;border:1px solid var(--line);border-radius:14px;overflow:hidden;}
+  .vGroupHeader{display:flex;align-items:center;gap:8px;padding:12px 14px;background:#f6f2ee;cursor:pointer;}
+  .vAgeTitle{font-size:14px;font-weight:700;flex:1;}
+  .vCountBadge{font-size:11.5px;color:var(--sub);background:#fff;padding:3px 8px;border-radius:20px;}
+  .vChevron{font-size:12px;color:var(--sub);}
+  .vGroupBody{padding:0 14px;}
+  .vRow{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line);}
   .vRow:last-child{border-bottom:none;}
   .vName{font-size:14px;font-weight:600;}
   .vAge{font-size:11.5px;color:var(--sub);}
-  .vStatus{font-size:12px;padding:5px 10px;border-radius:20px;font-weight:600;}
+  .vStatus{font-size:12px;padding:5px 10px;border-radius:20px;font-weight:600;white-space:nowrap;}
   .vStatus.done{background:#e3f3e6;color:#3e8e52;}
+  .vStatus.scheduled{background:#e3ecf5;color:#3e6e9e;}
   .vStatus.pending{background:#f3ede3;color:#9a7f4a;}
 
   /* bottom nav */
@@ -348,9 +354,17 @@
 <!-- 접종 입력 시트 -->
 <div class="sheet" id="sheetVax">
   <h3 id="vaxSheetTitle">💉 접종 기록</h3>
-  <div class="field"><label>접종일</label><input type="date" id="vaxDate"></div>
-  <div class="field"><label>병원 (선택)</label><input type="text" id="vaxHospital"></div>
-  <div class="field"><label>이상반응 메모 (선택)</label><input type="text" id="vaxNote"></div>
+  <div class="field"><label>예정일 (선택)</label><input type="date" id="vaxScheduled"></div>
+  <div class="field">
+    <label style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="vaxDoneChk" style="width:18px;height:18px;"> 접종 완료
+    </label>
+  </div>
+  <div id="vaxDoneFields" style="display:none;">
+    <div class="field"><label>실제 접종일</label><input type="date" id="vaxDate"></div>
+    <div class="field"><label>병원 (선택)</label><input type="text" id="vaxHospital"></div>
+    <div class="field"><label>이상반응 메모 (선택)</label><input type="text" id="vaxNote"></div>
+  </div>
   <div class="sheetBtns">
     <button class="btnDelete" id="vaxDeleteBtn" style="display:none;">삭제</button>
     <button class="btnCancel" id="vaxCancelBtn">취소</button>
@@ -600,6 +614,7 @@ function headPercentile(cm, ageM){ const [M,S]=interpRow(HCFA_MS, ageM); return 
 
 let growthChartObjs = {w:null,h:null,c:null};
 let growthComboChartObj = null;
+let growthOpenMonths = null; // Set
 
 function renderGrowth(){
   renderGrowthTab();
@@ -658,14 +673,46 @@ function renderGrowthTab(){
   };
 
   const hist = document.getElementById('growthHistList');
-  hist.innerHTML = sorted.slice().reverse().map(g=>
-    `<div class="growthHistItem" data-id="${g.id}" style="cursor:pointer;">
-      <span>${g.date}</span>
-      <span>${g.weight?g.weight+'kg ':''}${g.height?g.height+'cm ':''}${g.head?g.head+'cm':''}</span>
-    </div>`).join('') || '<div class="emptyMsg">아직 기록이 없어요.</div>';
-  hist.querySelectorAll('.growthHistItem').forEach(el=>{
-    el.onclick=()=>openGrowthEditSheet(el.dataset.id);
-  });
+  const reversed = sorted.slice().reverse();
+  if(reversed.length===0){
+    hist.innerHTML = '<div class="emptyMsg">아직 기록이 없어요.</div>';
+  } else {
+    const byMonth = {};
+    reversed.forEach(g=>{
+      const ym = g.date.slice(0,7); // YYYY-MM
+      if(!byMonth[ym]) byMonth[ym]=[];
+      byMonth[ym].push(g);
+    });
+    const months = Object.keys(byMonth).sort().reverse();
+    if(growthOpenMonths===null){ growthOpenMonths = new Set([months[0]]); }
+    hist.innerHTML = months.map(ym=>{
+      const [yy,mm] = ym.split('-');
+      const isOpen = growthOpenMonths.has(ym);
+      const rows = byMonth[ym].map(g=>
+        `<div class="growthHistItem" data-id="${g.id}" style="cursor:pointer;">
+          <span>${g.date}</span>
+          <span>${g.weight?g.weight+'kg ':''}${g.height?g.height+'cm ':''}${g.head?g.head+'cm':''}</span>
+        </div>`).join('');
+      return `<div class="vGroup">
+        <div class="vGroupHeader growthMonthHeader" data-ym="${ym}">
+          <span class="vAgeTitle">${yy}년 ${Number(mm)}월</span>
+          <span class="vCountBadge">${byMonth[ym].length}건</span>
+          <span class="vChevron">${isOpen?'▾':'▸'}</span>
+        </div>
+        <div class="vGroupBody" style="display:${isOpen?'block':'none'};padding-bottom:4px;">${rows}</div>
+      </div>`;
+    }).join('');
+    hist.querySelectorAll('.growthMonthHeader').forEach(el=>{
+      el.onclick=()=>{
+        const ym = el.dataset.ym;
+        if(growthOpenMonths.has(ym)) growthOpenMonths.delete(ym); else growthOpenMonths.add(ym);
+        renderGrowthTab();
+      };
+    });
+    hist.querySelectorAll('.growthHistItem').forEach(el=>{
+      el.onclick=(e)=>{ e.stopPropagation(); openGrowthEditSheet(el.dataset.id); };
+    });
+  }
 }
 
 /* 대시보드: 키/몸무게/머리둘레 콤보 누적차트, 최근 기록 지점에만 백분위 라벨 표시 */
@@ -1076,26 +1123,55 @@ VAX_DEFS.forEach(v=>{
     FLAT_VAX.push({vid:v.id, vname:v.name, doseIndex:i, doseLabel:dose.label, age:dose.age});
   });
 });
+let vaxOpenGroups = null; // Set, lazily initialized with first incomplete group open
 function renderVax(){
   const wrap = document.getElementById('vaxList');
+  if(vaxOpenGroups===null){
+    vaxOpenGroups = new Set();
+    for(const age of AGE_ORDER){
+      const items = FLAT_VAX.filter(f=>f.age===age);
+      if(items.length===0) continue;
+      const doneCount = items.filter(f=>vaxRecords[`${f.vid}_${f.doseIndex}`]?.done).length;
+      if(doneCount < items.length){ vaxOpenGroups.add(age); break; }
+    }
+  }
   let html = '';
   AGE_ORDER.forEach(age=>{
     const items = FLAT_VAX.filter(f=>f.age===age);
     if(items.length===0) return;
+    const doneCount = items.filter(f=>vaxRecords[`${f.vid}_${f.doseIndex}`]?.done).length;
+    const isOpen = vaxOpenGroups.has(age);
     const rows = items.map(f=>{
       const key = `${f.vid}_${f.doseIndex}`;
       const rec = vaxRecords[key];
-      const status = rec ? `<span class="vStatus done">완료 ${rec.date}</span>` : `<span class="vStatus pending">예정</span>`;
+      let status;
+      if(rec && rec.done) status = `<span class="vStatus done">완료 ${rec.date}</span>`;
+      else if(rec && rec.scheduledDate) status = `<span class="vStatus scheduled">예정 ${rec.scheduledDate}</span>`;
+      else status = `<span class="vStatus pending">미정</span>`;
       return `<div class="vRow" data-key="${key}" data-vname="${f.vname}" data-dlabel="${f.doseLabel}">
         <div><div class="vName">${f.vname} ${f.doseLabel}</div></div>
         ${status}
       </div>`;
     }).join('');
-    html += `<div class="vGroup"><div class="vAge" style="font-weight:700;font-size:13px;color:var(--ink);margin:10px 0 2px;">${age}</div>${rows}</div>`;
+    html += `<div class="vGroup">
+      <div class="vGroupHeader" data-age="${age}">
+        <span class="vAgeTitle">${age}</span>
+        <span class="vCountBadge">${doneCount}/${items.length} 완료</span>
+        <span class="vChevron">${isOpen?'▾':'▸'}</span>
+      </div>
+      <div class="vGroupBody" style="display:${isOpen?'block':'none'};">${rows}</div>
+    </div>`;
   });
   wrap.innerHTML = html;
+  wrap.querySelectorAll('.vGroupHeader').forEach(el=>{
+    el.onclick=()=>{
+      const age = el.dataset.age;
+      if(vaxOpenGroups.has(age)) vaxOpenGroups.delete(age); else vaxOpenGroups.add(age);
+      renderVax();
+    };
+  });
   wrap.querySelectorAll('.vRow').forEach(el=>{
-    el.onclick=()=>openVaxSheet(el.dataset.key, el.dataset.vname, el.dataset.dlabel);
+    el.onclick=(e)=>{ e.stopPropagation(); openVaxSheet(el.dataset.key, el.dataset.vname, el.dataset.dlabel); };
   });
 }
 let vaxEditKey=null;
@@ -1103,23 +1179,33 @@ function openVaxSheet(key, vname, dlabel){
   vaxEditKey = key;
   document.getElementById('vaxSheetTitle').textContent = `💉 ${vname} ${dlabel}`;
   const rec = vaxRecords[key];
-  document.getElementById('vaxDate').value = rec? rec.date : toDateStr(new Date());
+  document.getElementById('vaxScheduled').value = rec? (rec.scheduledDate||'') : '';
+  const isDone = rec? !!rec.done : false;
+  document.getElementById('vaxDoneChk').checked = isDone;
+  document.getElementById('vaxDoneFields').style.display = isDone ? 'block' : 'none';
+  document.getElementById('vaxDate').value = rec && rec.date ? rec.date : toDateStr(new Date());
   document.getElementById('vaxHospital').value = rec? (rec.hospital||'') : '';
   document.getElementById('vaxNote').value = rec? (rec.note||'') : '';
   document.getElementById('vaxDeleteBtn').style.display = rec? 'block':'none';
   showSheet('sheetVax');
 }
+document.getElementById('vaxDoneChk').onchange = (e)=>{
+  document.getElementById('vaxDoneFields').style.display = e.target.checked ? 'block' : 'none';
+};
 document.getElementById('vaxSaveBtn').onclick = async ()=>{
-  const date = document.getElementById('vaxDate').value;
-  const hospital = document.getElementById('vaxHospital').value;
-  const note = document.getElementById('vaxNote').value;
-  await db.collection('vaccinations').doc(CHILD_ID+'_'+vaxEditKey).set({childId:CHILD_ID, date, hospital, note});
+  const scheduledDate = document.getElementById('vaxScheduled').value || null;
+  const done = document.getElementById('vaxDoneChk').checked;
+  const date = done ? document.getElementById('vaxDate').value : null;
+  const hospital = done ? document.getElementById('vaxHospital').value : null;
+  const note = done ? document.getElementById('vaxNote').value : null;
+  await db.collection('vaccinations').doc(CHILD_ID+'_'+vaxEditKey).set({childId:CHILD_ID, scheduledDate, done, date, hospital, note});
   hideAllSheets();
 };
 document.getElementById('vaxDeleteBtn').onclick = async ()=>{
   await db.collection('vaccinations').doc(CHILD_ID+'_'+vaxEditKey).delete();
   hideAllSheets();
 };
+
 </script>
 </body>
 </html>
