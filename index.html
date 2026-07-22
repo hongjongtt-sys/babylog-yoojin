@@ -670,7 +670,10 @@ function normalCDF(z){
 }
 function lmsPercentile(x, L, M, S){
   let z = Math.abs(L) < 1e-9 ? Math.log(x/M)/S : (Math.pow(x/M, L)-1)/(L*S);
-  return Math.round(normalCDF(z)*100);
+  const raw = normalCDF(z)*100;
+  if(raw >= 99.9) return '>99.9%ile';
+  if(raw <= 0.1) return '<0.1%ile';
+  return Math.round(raw)+'%ile';
 }
 function weightPercentile(kg, ageM){ const [L,M,S]=interpRow(WFA_LMS, ageM); return lmsPercentile(kg,L,M,S); }
 function heightPercentile(cm, ageM){ const [M,S]=interpRow(HFA_MS, ageM); return lmsPercentile(cm,1,M,S); }
@@ -707,9 +710,9 @@ function renderGrowthTab(){
     const hp = latest.height ? heightPercentile(Number(latest.height), ageM) : null;
     const cp = latest.head ? headPercentile(Number(latest.head), ageM) : null;
     pctHtml = `<div class="pctRow">
-      <div class="pctBox"><div class="pctNum">${wp!==null?wp+'%ile':'-'}</div><div class="pctLbl">체중 (${latest.weight||'-'}kg)</div></div>
-      <div class="pctBox"><div class="pctNum">${hp!==null?hp+'%ile':'-'}</div><div class="pctLbl">키 (${latest.height||'-'}cm)</div></div>
-      <div class="pctBox"><div class="pctNum">${cp!==null?cp+'%ile':'-'}</div><div class="pctLbl">머리둘레 (${latest.head||'-'}cm)</div></div>
+      <div class="pctBox"><div class="pctNum">${wp!==null?wp:'-'}</div><div class="pctLbl">체중 (${latest.weight||'-'}kg)</div></div>
+      <div class="pctBox"><div class="pctNum">${hp!==null?hp:'-'}</div><div class="pctLbl">키 (${latest.height||'-'}cm)</div></div>
+      <div class="pctBox"><div class="pctNum">${cp!==null?cp:'-'}</div><div class="pctLbl">머리둘레 (${latest.head||'-'}cm)</div></div>
     </div>
     <p style="font-size:11px;color:var(--sub);margin:0 0 10px;">WHO 성장표준 기준 근사치입니다. 정확한 판단은 소아과 검진을 따르세요.</p>`;
   }
@@ -816,7 +819,7 @@ function renderDashboardGrowthChart(){
         if(sorted[k][field]){
           const ageM = ageInMonths(childBirthDate, sorted[k].date);
           const pct = pctFn(Number(sorted[k][field]), ageM);
-          lastLabel = `${pct}%ile`;
+          lastLabel = pct;
           break;
         }
       }
