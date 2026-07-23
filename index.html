@@ -221,6 +221,15 @@
       <button class="quickBtn sleep" id="qbSleep"><span class="ic">😴</span>수면</button>
     </div>
     <div class="card">
+      <h3 style="margin-bottom:8px;">하루 타임라인</h3>
+      <canvas id="dayTimelineCanvas" height="90"></canvas>
+      <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--sub);">
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--feed);margin-right:4px;"></span>수유</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--diaper);margin-right:4px;"></span>배변</span>
+        <span><span style="display:inline-block;width:14px;height:8px;border-radius:4px;background:var(--sleep);margin-right:4px;"></span>수면</span>
+      </div>
+    </div>
+    <div class="card">
       <h3 style="margin-bottom:4px;">타임라인</h3>
       <div id="recTimeline"></div>
     </div>
@@ -890,11 +899,86 @@ function renderRecordTab(){
   document.getElementById('recDateLabel').textContent = fmtDateLabel(recDate);
   const ds = toDateStr(recDate);
   const items = allRecords.filter(r=>r.date===ds).sort((a,b)=>getSortTime(a).localeCompare(getSortTime(b)));
+  drawDayTimeline(items);
   const wrap = document.getElementById('recTimeline');
   if(items.length===0){ wrap.innerHTML='<div class="emptyMsg">이 날 기록이 없어요.</div>'; return; }
   wrap.innerHTML = items.map(r=>renderTlItem(r)).join('');
   wrap.querySelectorAll('.tlItem').forEach(el=>{
     el.onclick=()=>openEditSheet(el.dataset.id, el.dataset.type);
+  });
+}
+function timeToFrac(t){ // "HH:MM" -> 0~24 float
+  if(!t) return null;
+  const [h,m] = t.split(':').map(Number);
+  return h + m/60;
+}
+function drawDayTimeline(items){
+  const canvas = document.getElementById('dayTimelineCanvas');
+  if(!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cssWidth = canvas.parentElement.clientWidth || 300;
+  const cssHeight = 90;
+  canvas.width = cssWidth*dpr;
+  canvas.height = cssHeight*dpr;
+  canvas.style.width = cssWidth+'px';
+  canvas.style.height = cssHeight+'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssWidth,cssHeight);
+
+  const padL=6, padR=6, trackY=34, trackH=22;
+  const trackW = cssWidth-padL-padR;
+  const xOf = (hourFrac)=> padL + (hourFrac/24)*trackW;
+
+  // 배경 트랙
+  ctx.fillStyle = '#f3ede8';
+  ctx.beginPath();
+  ctx.roundRect ? ctx.roundRect(padL, trackY, trackW, trackH, 8) : ctx.rect(padL, trackY, trackW, trackH);
+  ctx.fill();
+
+  // 3시간 간격 눈금 + 라벨
+  ctx.strokeStyle = '#e2d9d3';
+  ctx.fillStyle = '#9a8f8a';
+  ctx.font = '10px -apple-system,sans-serif';
+  ctx.textAlign = 'center';
+  for(let h=0; h<=24; h+=3){
+    const x = xOf(h);
+    ctx.beginPath();
+    ctx.moveTo(x, trackY-2); ctx.lineTo(x, trackY+trackH+2);
+    ctx.lineWidth=1;
+    ctx.stroke();
+    ctx.fillText(h+'시', x, trackY+trackH+14);
+  }
+
+  // 수면 블록 (보라색 바)
+  items.filter(r=>r.type==='sleep').forEach(r=>{
+    const start = timeToFrac(r.startTime);
+    let end = r.endTime ? timeToFrac(r.endTime) : 24; // 진행중이면 자정까지
+    if(end < start) end = 24; // 자정 넘김 처리(단순화)
+    const x1 = xOf(start), x2 = xOf(end);
+    ctx.fillStyle = 'rgba(165,143,201,0.75)';
+    ctx.beginPath();
+    const w = Math.max(x2-x1, 3);
+    if(ctx.roundRect) ctx.roundRect(x1, trackY, w, trackH, 6); else ctx.rect(x1, trackY, w, trackH);
+    ctx.fill();
+  });
+
+  // 수유 (파란 점, 트랙 위쪽)
+  items.filter(r=>r.type==='feed').forEach(r=>{
+    const x = xOf(timeToFrac(r.time));
+    ctx.fillStyle = '#7fb3d5';
+    ctx.beginPath();
+    ctx.arc(x, trackY-8, 4, 0, Math.PI*2);
+    ctx.fill();
+  });
+
+  // 배변 (갈색 점, 트랙 아래쪽)
+  items.filter(r=>r.type==='diaper').forEach(r=>{
+    const x = xOf(timeToFrac(r.time));
+    ctx.fillStyle = '#c9a96e';
+    ctx.beginPath();
+    ctx.arc(x, trackY+trackH+8, 4, 0, Math.PI*2);
+    ctx.fill();
   });
 }
 function getSortTime(r){
