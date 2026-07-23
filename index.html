@@ -1208,10 +1208,24 @@ document.getElementById('diarySaveBtn').onclick = async ()=>{
   const ds = toDateStr(diaryDate);
   const text = document.getElementById('diaryTextarea').value;
   const docId = CHILD_ID+'_'+ds;
-  if(text.trim()===''){
-    await db.collection('diary').doc(docId).delete().catch(()=>{});
-  } else {
-    await db.collection('diary').doc(docId).set({childId:CHILD_ID, date:ds, text});
+  const btn = document.getElementById('diarySaveBtn');
+  const originalLabel = btn.textContent;
+  btn.textContent = '저장 중...';
+  btn.disabled = true;
+  try{
+    if(text.trim()===''){
+      await db.collection('diary').doc(docId).delete();
+    } else {
+      await db.collection('diary').doc(docId).set({childId:CHILD_ID, date:ds, text});
+    }
+    btn.textContent = '저장됨 ✓';
+  }catch(err){
+    console.error('일기 저장 실패:', err);
+    alert('저장 실패: '+err.message);
+    btn.textContent = originalLabel;
+  }finally{
+    btn.disabled = false;
+    setTimeout(()=>{ btn.textContent = originalLabel; }, 1500);
   }
 };
 function jumpToDiaryDate(dateStr){
