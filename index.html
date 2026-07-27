@@ -106,7 +106,7 @@
   .medAddBtn{width:100%;padding:13px;border:none;border-radius:12px;background:var(--med);color:#fff;font-weight:700;font-size:14.5px;margin-bottom:14px;}
 
   /* checkboxes */
-  .chkRow{display:flex;gap:18px;}
+  .chkRow{display:flex;gap:14px;flex-wrap:wrap;row-gap:8px;}
   .chkRow label{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink);}
   .chkRow input{width:18px;height:18px;}
 
@@ -305,6 +305,7 @@
   <div class="field"><label>수유량 (ml)</label><input type="number" id="feedAmount" placeholder="예: 120"></div>
   <div class="field">
     <div class="chkRow">
+      <label><input type="checkbox" id="feedProbiotics"> 유산균</label>
       <label><input type="checkbox" id="feedBurp"> 트림함</label>
       <label><input type="checkbox" id="feedReflux"> 역류/토함</label>
     </div>
@@ -938,6 +939,7 @@ function renderTlItem(r){
   if(r.type==='feed'){
     main = `🍼 수유 ${r.amount?r.amount+'ml':''}`;
     const tags=[r.method].filter(Boolean);
+    if(r.probiotics) tags.push('유산균');
     if(r.burp) tags.push('트림함');
     if(r.reflux) tags.push('역류');
     sub = tags.join(' · ');
@@ -975,6 +977,7 @@ function openAddSheet(type){
     document.getElementById('feedTime').value = toTimeStr(now);
     document.getElementById('feedAmount').value = lastFeedAmount;
     setSeg('feedMethodSeg','모유');
+    document.getElementById('feedProbiotics').checked = false;
     document.getElementById('feedBurp').checked = false;
     document.getElementById('feedReflux').checked = false;
     document.getElementById('feedDeleteBtn').style.display='none';
@@ -1001,6 +1004,7 @@ function openEditSheet(id, type){
     document.getElementById('feedTime').value = r.time;
     document.getElementById('feedAmount').value = r.amount;
     setSeg('feedMethodSeg', r.method);
+    document.getElementById('feedProbiotics').checked = !!r.probiotics;
     document.getElementById('feedBurp').checked = !!r.burp;
     document.getElementById('feedReflux').checked = !!r.reflux;
     document.getElementById('feedDeleteBtn').style.display='block';
@@ -1061,10 +1065,11 @@ document.getElementById('feedSaveBtn').onclick = async ()=>{
   const time = document.getElementById('feedTime').value;
   const amount = Number(document.getElementById('feedAmount').value)||0;
   const method = getSegVal('feedMethodSeg');
+  const probiotics = document.getElementById('feedProbiotics').checked;
   const burp = document.getElementById('feedBurp').checked;
   const reflux = document.getElementById('feedReflux').checked;
   lastFeedAmount = amount;
-  const data = {childId:CHILD_ID, type:'feed', date:sheetContextDate, time, amount, method, burp, reflux, dateTime:sheetContextDate+'T'+time};
+  const data = {childId:CHILD_ID, type:'feed', date:sheetContextDate, time, amount, method, probiotics, burp, reflux, dateTime:sheetContextDate+'T'+time};
   if(editingId) await db.collection('records').doc(editingId).update(data);
   else await db.collection('records').add(data);
   hideAllSheets();
