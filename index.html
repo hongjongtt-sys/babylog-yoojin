@@ -310,6 +310,7 @@
       <label><input type="checkbox" id="feedReflux"> 역류/토함</label>
     </div>
   </div>
+  <div class="field"><label>메모 (선택)</label><input type="text" id="feedNote" placeholder="예: 잘 안먹음, 보채면서 먹음 등"></div>
   <div class="sheetBtns">
     <button class="btnDelete" id="feedDeleteBtn" style="display:none;">삭제</button>
     <button class="btnCancel" id="feedCancelBtn">취소</button>
@@ -942,6 +943,7 @@ function renderTlItem(r){
     if(r.probiotics) tags.push('유산균');
     if(r.burp) tags.push('트림함');
     if(r.reflux) tags.push('역류');
+    if(r.note) tags.push(r.note);
     sub = tags.join(' · ');
   }
   else if(r.type==='diaper'){ main = `💩 배변 (${r.kind})`; sub = r.note||''; }
@@ -980,6 +982,7 @@ function openAddSheet(type){
     document.getElementById('feedProbiotics').checked = false;
     document.getElementById('feedBurp').checked = false;
     document.getElementById('feedReflux').checked = false;
+    document.getElementById('feedNote').value='';
     document.getElementById('feedDeleteBtn').style.display='none';
     showSheet('sheetFeed');
   }else if(type==='diaper'){
@@ -1007,6 +1010,7 @@ function openEditSheet(id, type){
     document.getElementById('feedProbiotics').checked = !!r.probiotics;
     document.getElementById('feedBurp').checked = !!r.burp;
     document.getElementById('feedReflux').checked = !!r.reflux;
+    document.getElementById('feedNote').value = r.note||'';
     document.getElementById('feedDeleteBtn').style.display='block';
     showSheet('sheetFeed');
   }else if(type==='diaper'){
@@ -1068,8 +1072,9 @@ document.getElementById('feedSaveBtn').onclick = async ()=>{
   const probiotics = document.getElementById('feedProbiotics').checked;
   const burp = document.getElementById('feedBurp').checked;
   const reflux = document.getElementById('feedReflux').checked;
+  const note = document.getElementById('feedNote').value;
   lastFeedAmount = amount;
-  const data = {childId:CHILD_ID, type:'feed', date:sheetContextDate, time, amount, method, probiotics, burp, reflux, dateTime:sheetContextDate+'T'+time};
+  const data = {childId:CHILD_ID, type:'feed', date:sheetContextDate, time, amount, method, probiotics, burp, reflux, note, dateTime:sheetContextDate+'T'+time};
   if(editingId) await db.collection('records').doc(editingId).update(data);
   else await db.collection('records').add(data);
   hideAllSheets();
