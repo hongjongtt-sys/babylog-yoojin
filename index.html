@@ -380,9 +380,14 @@
 
 <!-- 접종 예정 알림 팝업 -->
 <div class="sheet" id="sheetVaxReminder">
-  <h3>💉 내일 접종 예정</h3>
+  <h3>💉 접종 알림</h3>
   <div id="vaxReminderList"></div>
-  <div class="sheetBtns" style="margin-top:14px;">
+  <div class="field" style="margin-top:10px;">
+    <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;">
+      <input type="checkbox" id="vaxReminderMuteChk" style="width:18px;height:18px;"> 오늘 이 알림 그만보기
+    </label>
+  </div>
+  <div class="sheetBtns" style="margin-top:6px;">
     <button class="btnCancel" id="vaxReminderCloseBtn" style="width:100%;">확인</button>
   </div>
 </div>
@@ -505,6 +510,7 @@ let childBirthDate = null; // 'YYYY-MM-DD'
 let customVaxList = []; // 사용자가 추가한 백신
 let hiddenVaxKeys = new Set(); // 기본 백신 중 숨긴 것
 let allDiary = []; // 일기 캐시
+let dismissedVaxDates = new Set(); // 알림 그만보기 처리된 날짜들
 
 auth.onAuthStateChanged(user=>{
   document.getElementById('loadingScreen').style.display='none';
@@ -534,6 +540,12 @@ function startListeners(){
       vaxRecords = {};
       snap.forEach(doc=>{ vaxRecords[doc.id.replace(CHILD_ID+'_','')] = {docId:doc.id, ...doc.data()}; });
       renderVax();
+      scheduleVaxReminderCheck();
+    });
+  db.collection('vaxReminderDismissed').where('childId','==',CHILD_ID)
+    .onSnapshot(snap=>{
+      dismissedVaxDates = new Set();
+      snap.forEach(doc=>{ dismissedVaxDates.add(doc.data().date); });
       scheduleVaxReminderCheck();
     });
   db.collection('customVax').where('childId','==',CHILD_ID)
@@ -1365,6 +1377,7 @@ function getAllAgeGroups(){
 }
 let vaxReminderShown = false; // 이번 세션에 한 번만 표시
 let vaxReminderTimer = null;
+let vaxReminderActiveDates = []; // 현재 팝업에 표시된 대상 날짜들 (그만보기 처리용)
 function scheduleVaxReminderCheck(){
   if(vaxReminderShown) return;
   clearTimeout(vaxReminderTimer);
@@ -1373,22 +1386,43 @@ function scheduleVaxReminderCheck(){
 }
 function checkVaxReminder(){
   if(vaxReminderShown) return;
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate()+1);
+  const now = new Date();
+  const todayStr = toDateStr(now);
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate()+1);
   const tomorrowStr = toDateStr(tomorrow);
+
+  const targetDates = [tomorrowStr]; // 하루 전날은 언제 열어도 체크
+  if(now.getHours() >= 8) targetDates.push(todayStr); // 당일은 오전 8시 이후에만 체크
+
   const flat = getFlatVax();
-  const dueItems = flat.filter(f=>{
-    const rec = vaxRecords[f.key];
-    return rec && rec.date===tomorrowStr && !rec.done;
+  let dueItems = [];
+  targetDates.forEach(dateStr=>{
+    if(dismissedVaxDates.has(dateStr)) return; // 그만보기 처리된 날짜는 스킵
+    flat.forEach(f=>{
+      const rec = vaxRecords[f.key];
+      if(rec && rec.date===dateStr && !rec.done){
+        dueItems.push({...f, dueDate:dateStr});
+      }
+    });
   });
   if(dueItems.length===0) return;
   vaxReminderShown = true;
+  vaxReminderActiveDates = [...new Set(dueItems.map(d=>d.dueDate))];
   document.getElementById('vaxReminderList').innerHTML = dueItems.map(f=>
-    `<div class="growthHistItem"><span>${f.vname} ${f.doseLabel}</span><span style="color:var(--sub);">${tomorrowStr}</span></div>`
+    `<div class="growthHistItem"><span>${f.vname} ${f.doseLabel}</span><span style="color:var(--sub);">${f.dueDate===todayStr?'오늘':'내일'} (${f.dueDate})</span></div>`
   ).join('');
+  document.getElementById('vaxReminderMuteChk').checked = false;
   showSheet('sheetVaxReminder');
 }
-document.getElementById('vaxReminderCloseBtn').onclick = hideAllSheets;
+document.getElementById('vaxReminderCloseBtn').onclick = async ()=>{
+  const mute = document.getElementById('vaxReminderMuteChk').checked;
+  if(mute){
+    for(const dateStr of vaxReminderActiveDates){
+      await db.collection('vaxReminderDismissed').add({childId:CHILD_ID, date:dateStr});
+    }
+  }
+  hideAllSheets();
+};
 
 let vaxOpenGroups = null; // Set, lazily initialized with first incomplete group open
 function renderVax(){
