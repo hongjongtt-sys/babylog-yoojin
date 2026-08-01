@@ -378,6 +378,15 @@
   </div>
 </div>
 
+<!-- 접종 예정 알림 팝업 -->
+<div class="sheet" id="sheetVaxReminder">
+  <h3>💉 내일 접종 예정</h3>
+  <div id="vaxReminderList"></div>
+  <div class="sheetBtns" style="margin-top:14px;">
+    <button class="btnCancel" id="vaxReminderCloseBtn" style="width:100%;">확인</button>
+  </div>
+</div>
+
 <!-- 성장 기록 입력 시트 -->
 <div class="sheet" id="sheetGrowth">
   <h3>👶 성장 기록</h3>
@@ -525,6 +534,7 @@ function startListeners(){
       vaxRecords = {};
       snap.forEach(doc=>{ vaxRecords[doc.id.replace(CHILD_ID+'_','')] = {docId:doc.id, ...doc.data()}; });
       renderVax();
+      scheduleVaxReminderCheck();
     });
   db.collection('customVax').where('childId','==',CHILD_ID)
     .onSnapshot(snap=>{
@@ -1353,6 +1363,33 @@ function getAllAgeGroups(){
   flat.forEach(f=>{ if(!ages.includes(f.age)) ages.push(f.age); }); // 커스텀 개월수(직접입력)도 뒤에 추가
   return ages;
 }
+let vaxReminderShown = false; // 이번 세션에 한 번만 표시
+let vaxReminderTimer = null;
+function scheduleVaxReminderCheck(){
+  if(vaxReminderShown) return;
+  clearTimeout(vaxReminderTimer);
+  // customVax/hiddenVax 리스너까지 다 도착할 시간을 잠깐 기다렸다가 체크
+  vaxReminderTimer = setTimeout(checkVaxReminder, 600);
+}
+function checkVaxReminder(){
+  if(vaxReminderShown) return;
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate()+1);
+  const tomorrowStr = toDateStr(tomorrow);
+  const flat = getFlatVax();
+  const dueItems = flat.filter(f=>{
+    const rec = vaxRecords[f.key];
+    return rec && rec.date===tomorrowStr && !rec.done;
+  });
+  if(dueItems.length===0) return;
+  vaxReminderShown = true;
+  document.getElementById('vaxReminderList').innerHTML = dueItems.map(f=>
+    `<div class="growthHistItem"><span>${f.vname} ${f.doseLabel}</span><span style="color:var(--sub);">${tomorrowStr}</span></div>`
+  ).join('');
+  showSheet('sheetVaxReminder');
+}
+document.getElementById('vaxReminderCloseBtn').onclick = hideAllSheets;
+
 let vaxOpenGroups = null; // Set, lazily initialized with first incomplete group open
 function renderVax(){
   const wrap = document.getElementById('vaxList');
