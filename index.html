@@ -80,6 +80,9 @@
   .field{margin-bottom:14px;}
   .field label{display:block;font-size:12.5px;color:var(--sub);margin-bottom:5px;}
   .field input, .field select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;font-size:15px;background:#fdfbfa;}
+  .timeSelectRow{display:flex;align-items:center;gap:6px;}
+  .timeSelectRow select{flex:1;padding:11px 8px;border:1px solid var(--line);border-radius:10px;font-size:15px;background:#fdfbfa;}
+  .timeSelectRow span{color:var(--sub);font-weight:600;}
   .segRow{display:flex;gap:8px;}
   .segBtn{flex:1;padding:11px;border-radius:10px;border:1px solid var(--line);background:#fdfbfa;font-size:14px;font-weight:600;}
   .segBtn.sel{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);}
@@ -300,7 +303,12 @@
 <!-- 수유 입력 시트 -->
 <div class="sheet" id="sheetFeed">
   <h3>🍼 수유 기록</h3>
-  <div class="field"><label>시간</label><input type="time" id="feedTime"></div>
+  <div class="field"><label>시간</label>
+    <div class="timeSelectRow">
+      <select class="hourSelect" id="feedTime_h"></select><span>시</span>
+      <select class="minuteSelect" id="feedTime_m"></select><span>분</span>
+    </div>
+  </div>
   <div class="field"><label>방법</label>
     <div class="segRow" id="feedMethodSeg">
       <button class="segBtn sel" data-v="모유">모유</button>
@@ -327,7 +335,12 @@
 <!-- 배변 입력 시트 -->
 <div class="sheet" id="sheetDiaper">
   <h3>💩 배변 기록</h3>
-  <div class="field"><label>시간</label><input type="time" id="diaperTime"></div>
+  <div class="field"><label>시간</label>
+    <div class="timeSelectRow">
+      <select class="hourSelect" id="diaperTime_h"></select><span>시</span>
+      <select class="minuteSelect" id="diaperTime_m"></select><span>분</span>
+    </div>
+  </div>
   <div class="field"><label>구분</label>
     <div class="segRow" id="diaperKindSeg">
       <button class="segBtn sel" data-v="소변">소변</button>
@@ -346,8 +359,18 @@
 <!-- 수면 입력 시트 -->
 <div class="sheet" id="sheetSleep">
   <h3>😴 수면 기록</h3>
-  <div class="field"><label>시작 시간</label><input type="time" id="sleepStart"></div>
-  <div class="field"><label>종료 시간 (모르면 비워두세요)</label><input type="time" id="sleepEnd"></div>
+  <div class="field"><label>시작 시간</label>
+    <div class="timeSelectRow">
+      <select class="hourSelect" id="sleepStart_h"></select><span>시</span>
+      <select class="minuteSelect" id="sleepStart_m"></select><span>분</span>
+    </div>
+  </div>
+  <div class="field"><label>종료 시간 (모르면 비워두세요)</label>
+    <div class="timeSelectRow">
+      <select class="hourSelect optionalTime" id="sleepEnd_h"></select><span>시</span>
+      <select class="minuteSelect optionalTime" id="sleepEnd_m"></select><span>분</span>
+    </div>
+  </div>
   <div class="sheetBtns">
     <button class="btnDelete" id="sleepDeleteBtn" style="display:none;">삭제</button>
     <button class="btnCancel" id="sleepCancelBtn">취소</button>
@@ -358,7 +381,12 @@
 <!-- 투약 입력 시트 -->
 <div class="sheet" id="sheetMed">
   <h3>💊 투약 기록</h3>
-  <div class="field"><label>시간</label><input type="time" id="medTime"></div>
+  <div class="field"><label>시간</label>
+    <div class="timeSelectRow">
+      <select class="hourSelect" id="medTime_h"></select><span>시</span>
+      <select class="minuteSelect" id="medTime_m"></select><span>분</span>
+    </div>
+  </div>
   <div class="field"><label>약품명</label><input type="text" id="medName" placeholder="예: 타이레놀 시럽"></div>
   <div class="field"><label>용량</label><input type="text" id="medDose" placeholder="예: 3ml"></div>
   <div class="field"><label>메모 (선택)</label><input type="text" id="medNote" placeholder="예: 발열 38.5도"></div>
@@ -465,6 +493,42 @@ const CHILD_ID = "yoojin"; // 아이가 늘어나면 childId만 바꿔서 재사
 
 /* ---------- 유틸 ---------- */
 function pad(n){return n.toString().padStart(2,'0');}
+function populateTimeSelects(){
+  document.querySelectorAll('select.hourSelect').forEach(sel=>{
+    if(sel.dataset.populated) return;
+    if(sel.classList.contains('optionalTime')){
+      const opt=document.createElement('option'); opt.value=''; opt.textContent='─'; sel.appendChild(opt);
+    }
+    for(let h=0;h<24;h++){
+      const opt=document.createElement('option'); opt.value=pad(h); opt.textContent=pad(h); sel.appendChild(opt);
+    }
+    sel.dataset.populated='1';
+  });
+  document.querySelectorAll('select.minuteSelect').forEach(sel=>{
+    if(sel.dataset.populated) return;
+    if(sel.classList.contains('optionalTime')){
+      const opt=document.createElement('option'); opt.value=''; opt.textContent='─'; sel.appendChild(opt);
+    }
+    for(let m=0;m<60;m++){
+      const opt=document.createElement('option'); opt.value=pad(m); opt.textContent=pad(m); sel.appendChild(opt);
+    }
+    sel.dataset.populated='1';
+  });
+}
+populateTimeSelects();
+function setTimeSelect(baseId, timeStr){
+  const hSel = document.getElementById(baseId+'_h');
+  const mSel = document.getElementById(baseId+'_m');
+  if(!timeStr){ hSel.value=''; mSel.value=''; return; }
+  const [h,m] = timeStr.split(':');
+  hSel.value=h; mSel.value=m;
+}
+function getTimeSelect(baseId){
+  const h = document.getElementById(baseId+'_h').value;
+  const m = document.getElementById(baseId+'_m').value;
+  if(h==='' || m==='') return '';
+  return h+':'+m;
+}
 function toDateStr(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}
 function toTimeStr(d){return `${pad(d.getHours())}:${pad(d.getMinutes())}`;}
 function parseDateStr(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d);}
@@ -1005,7 +1069,7 @@ function openAddSheet(type){
   sheetContextDate = toDateStr(recDate);
   const now = new Date();
   if(type==='feed'){
-    document.getElementById('feedTime').value = toTimeStr(now);
+    setTimeSelect('feedTime', toTimeStr(now));
     document.getElementById('feedAmount').value = lastFeedAmount;
     setSeg('feedMethodSeg','모유');
     document.getElementById('feedProbiotics').checked = false;
@@ -1015,14 +1079,14 @@ function openAddSheet(type){
     document.getElementById('feedDeleteBtn').style.display='none';
     showSheet('sheetFeed');
   }else if(type==='diaper'){
-    document.getElementById('diaperTime').value = toTimeStr(now);
+    setTimeSelect('diaperTime', toTimeStr(now));
     document.getElementById('diaperNote').value='';
     setSeg('diaperKindSeg','소변');
     document.getElementById('diaperDeleteBtn').style.display='none';
     showSheet('sheetDiaper');
   }else if(type==='sleep'){
-    document.getElementById('sleepStart').value = toTimeStr(now);
-    document.getElementById('sleepEnd').value = '';
+    setTimeSelect('sleepStart', toTimeStr(now));
+    setTimeSelect('sleepEnd', '');
     document.getElementById('sleepDeleteBtn').style.display='none';
     showSheet('sheetSleep');
   }
@@ -1033,7 +1097,7 @@ function openEditSheet(id, type){
   if(!r) return;
   sheetContextDate = r.date;
   if(type==='feed'){
-    document.getElementById('feedTime').value = r.time;
+    setTimeSelect('feedTime', r.time);
     document.getElementById('feedAmount').value = r.amount;
     setSeg('feedMethodSeg', r.method);
     document.getElementById('feedProbiotics').checked = !!r.probiotics;
@@ -1043,18 +1107,18 @@ function openEditSheet(id, type){
     document.getElementById('feedDeleteBtn').style.display='block';
     showSheet('sheetFeed');
   }else if(type==='diaper'){
-    document.getElementById('diaperTime').value = r.time;
+    setTimeSelect('diaperTime', r.time);
     document.getElementById('diaperNote').value = r.note||'';
     setSeg('diaperKindSeg', r.kind);
     document.getElementById('diaperDeleteBtn').style.display='block';
     showSheet('sheetDiaper');
   }else if(type==='sleep'){
-    document.getElementById('sleepStart').value = r.startTime;
-    document.getElementById('sleepEnd').value = r.endTime||'';
+    setTimeSelect('sleepStart', r.startTime);
+    setTimeSelect('sleepEnd', r.endTime||'');
     document.getElementById('sleepDeleteBtn').style.display='block';
     showSheet('sheetSleep');
   }else if(type==='med'){
-    document.getElementById('medTime').value = r.time;
+    setTimeSelect('medTime', r.time);
     document.getElementById('medName').value = r.name;
     document.getElementById('medDose').value = r.dose;
     document.getElementById('medNote').value = r.note||'';
@@ -1095,7 +1159,7 @@ document.getElementById('overlay').onclick = hideAllSheets;
 
 /* 저장/삭제 */
 document.getElementById('feedSaveBtn').onclick = async ()=>{
-  const time = document.getElementById('feedTime').value;
+  const time = getTimeSelect('feedTime');
   const amount = Number(document.getElementById('feedAmount').value)||0;
   const method = getSegVal('feedMethodSeg');
   const probiotics = document.getElementById('feedProbiotics').checked;
@@ -1113,7 +1177,7 @@ document.getElementById('feedDeleteBtn').onclick = async ()=>{
   hideAllSheets();
 };
 document.getElementById('diaperSaveBtn').onclick = async ()=>{
-  const time = document.getElementById('diaperTime').value;
+  const time = getTimeSelect('diaperTime');
   const kind = getSegVal('diaperKindSeg');
   const note = document.getElementById('diaperNote').value;
   const data = {childId:CHILD_ID, type:'diaper', date:sheetContextDate, time, kind, note, dateTime:sheetContextDate+'T'+time};
@@ -1126,8 +1190,8 @@ document.getElementById('diaperDeleteBtn').onclick = async ()=>{
   hideAllSheets();
 };
 document.getElementById('sleepSaveBtn').onclick = async ()=>{
-  const startTime = document.getElementById('sleepStart').value;
-  const endTime = document.getElementById('sleepEnd').value || null;
+  const startTime = getTimeSelect('sleepStart');
+  const endTime = getTimeSelect('sleepEnd') || null;
   const data = {childId:CHILD_ID, type:'sleep', date:sheetContextDate, startTime, endTime, dateTime:sheetContextDate+'T'+startTime};
   if(editingId) await db.collection('records').doc(editingId).update(data);
   else await db.collection('records').add(data);
@@ -1165,7 +1229,7 @@ document.getElementById('medTodayJump').onclick=()=>{medDate=new Date(); renderM
 document.getElementById('medAddBtn').onclick=()=>{
   editingId=null;
   sheetContextDate = toDateStr(medDate);
-  document.getElementById('medTime').value = toTimeStr(new Date());
+  setTimeSelect('medTime', toTimeStr(new Date()));
   document.getElementById('medName').value='';
   document.getElementById('medDose').value='';
   document.getElementById('medNote').value='';
@@ -1173,7 +1237,7 @@ document.getElementById('medAddBtn').onclick=()=>{
   showSheet('sheetMed');
 };
 document.getElementById('medSaveBtn').onclick = async ()=>{
-  const time = document.getElementById('medTime').value;
+  const time = getTimeSelect('medTime');
   const name = document.getElementById('medName').value;
   const dose = document.getElementById('medDose').value;
   const note = document.getElementById('medNote').value;
